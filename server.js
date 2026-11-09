@@ -2,6 +2,7 @@ const http = require('node:http');
 const path = require('node:path');
 const express = require('express');
 const db = require('./src/db');
+const { validateAuthConfig } = require('./src/auth');
 const { createRouter } = require('./src/routes');
 const { createWebSocketServer } = require('./src/ws');
 
@@ -28,6 +29,11 @@ const httpServer = http.createServer(app);
 createWebSocketServer(httpServer, { db });
 
 async function start() {
+  validateAuthConfig();
+  db.validateDatabaseConfig();
+  if (process.env.NODE_ENV === 'production' && !/^https:\/\//i.test(process.env.ALLOWED_ORIGIN || '')) {
+    throw new Error('Production requires an HTTPS ALLOWED_ORIGIN');
+  }
   await db.ensureSchema();
   httpServer.listen(port, '0.0.0.0', () => {
     console.log(JSON.stringify({ severity: 'INFO', event: 'server_started', port, database: db.mode() }));

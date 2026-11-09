@@ -20,7 +20,7 @@ pnpm test
 pnpm start
 ```
 
-Open `http://localhost:3000`. With no database variables, the application reports `memory-development` at `/health`, which is useful for a quick UI or WebSocket demonstration and is reset when the process stops. For durable local data, set `DATABASE_URL` to a PostgreSQL database before starting; the server applies `schema.sql` on startup. When `DATABASE_URL` or the Cloud SQL variable set is present, an unavailable database is treated as a startup failure instead of silently falling back.
+Open `http://localhost:3000`. With no PostgreSQL variables, the application reports `memory-development` at `/health`, which is useful for a quick UI or WebSocket demonstration and is reset when the process stops. For durable local data, set `DATABASE_URL` to a PostgreSQL database before starting; the server applies `schema.sql` on startup. An invalid or partial database configuration is rejected, and production never falls back to memory mode. The managed Preview's injected non-PostgreSQL development DSN is intentionally ignored so the requested PostgreSQL path remains explicit.
 
 The automated suite starts the HTTP server on an ephemeral port and verifies health, account creation, duplicate protection, authorization, two-client online delivery, offline replay after reconnect, history persistence, and invalid WebSocket tokens. It uses the same memory adapter as a no-database Preview, so it does not modify a shared PostgreSQL environment.
 
@@ -37,7 +37,7 @@ The main development endpoints are:
 
 Create a PostgreSQL database, apply `schema.sql`, and provide either `DATABASE_URL` or the Cloud SQL variables shown in `.env.example`. For Cloud SQL through the Unix socket, set `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SOCKET_DIR=/cloudsql`, and `INSTANCE_CONNECTION_NAME=PROJECT:REGION:INSTANCE`. Store `DB_PASSWORD` and `JWT_SECRET` in Secret Manager; do not commit them.
 
-The included `Dockerfile` listens on the runtime `PORT` and the included `cloudbuild.yaml` shows a small Cloud Build → Artifact Registry → Cloud Run flow. A typical production deployment keeps `--max-instances=1`, sets `--timeout=3600`, attaches Cloud SQL, injects the database/JWT secrets, and sets `ALLOWED_ORIGIN` to the service's HTTPS URL. Cloud Run supplies HTTPS, so the browser automatically uses `wss://` for the same origin.
+The included `Dockerfile` listens on the runtime `PORT` and the included `cloudbuild.yaml` shows a small Cloud Build → Artifact Registry → Cloud Run flow. A typical production deployment keeps `--max-instances=1`, sets `--timeout=3600`, attaches Cloud SQL, injects the database/JWT secrets, and sets `ALLOWED_ORIGIN` to the service's HTTPS URL. Production startup requires a JWT secret of at least 32 characters, an HTTPS origin, and PostgreSQL configuration; it refuses to start when any of these are missing. Cloud Run supplies HTTPS, so the browser automatically uses `wss://` for the same origin.
 
 Example setup commands, after selecting a GCP project and region:
 
@@ -48,7 +48,9 @@ gcloud services enable run.googleapis.com sqladmin.googleapis.com \
 gcloud artifacts repositories create chat-repo \
   --repository-format=docker --location=us-central1
 gcloud builds submit --config cloudbuild.yaml \
-  --substitutions=SHORT_SHA=$(git rev-parse --short HEAD)
+  --substitutions=SHORT_SHA=$(git rev-parse --short HEAD),\
+_INSTANCE_CONNECTION_NAME=PROJECT_ID:us-central1:chat-db,\
+_ALLOWED_ORIGIN=https://YOUR-SERVICE-URL
 ```
 
 Create the Cloud SQL instance and Secret Manager values using the current `gcloud` help for your account. The PRD's deployment guide documents the smallest demo-oriented tier, Cloud SQL Client role, Secret Manager accessor role, and the service update needed after the first URL is known.

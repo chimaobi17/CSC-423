@@ -2,9 +2,18 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const JWT_TTL = '2h';
+const DEVELOPMENT_SECRET = 'chatbridge-development-secret-change-me';
 
 function jwtSecret() {
-  return process.env.JWT_SECRET || 'chatbridge-development-secret-change-me';
+  const secret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : DEVELOPMENT_SECRET);
+  if (secret.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+  return secret;
+}
+
+function validateAuthConfig() {
+  jwtSecret();
 }
 
 function hashPassword(password) {
@@ -49,5 +58,6 @@ module.exports = {
   requireAuth,
   signToken,
   tokenFromRequest,
+  validateAuthConfig,
   verifyToken
 };

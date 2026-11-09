@@ -4,15 +4,28 @@ const path = require('node:path');
 const { Pool } = require('pg');
 
 const schemaPath = path.join(__dirname, '..', 'schema.sql');
-const databaseUrlIsPostgres = /^postgres(?:ql)?:/i.test(process.env.DATABASE_URL || '');
-const usePostgres = Boolean(
-  databaseUrlIsPostgres ||
-  (process.env.DB_USER && process.env.DB_NAME && (process.env.DB_HOST || process.env.INSTANCE_CONNECTION_NAME))
+const databaseUrl = (process.env.DATABASE_URL || '').trim();
+const databaseUrlIsPostgres = /^postgres(?:ql)?:/i.test(databaseUrl);
+const knownManagedMysqlUrl = /^mysql:/i.test(databaseUrl) && process.env.NODE_ENV !== 'production';
+const hasCloudSqlSettings = Boolean(
+  process.env.DB_USER &&
+  process.env.DB_NAME &&
+  (process.env.DB_HOST || process.env.INSTANCE_CONNECTION_NAME)
 );
+const hasAnyDatabaseSettings = Boolean(
+  databaseUrl ||
+  process.env.DB_USER ||
+  process.env.DB_PASSWORD ||
+  process.env.DB_NAME ||
+  process.env.DB_HOST ||
+  process.env.DB_SOCKET_DIR ||
+  process.env.INSTANCE_CONNECTION_NAME
+);
+const usePostgres = Boolean(databaseUrlIsPostgres || hasCloudSqlSettings);
 
 const pool = usePostgres
   ? new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrlIsPostgres ? databaseUrl : undefined,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
@@ -64,6 +77,19 @@ function normalizeMessage(row) {
 
 function mode() {
   return usePostgres ? 'postgres' : 'memory-development';
+}
+
+function validateDatabaseConfig() {
+  if (knownManagedMysqlUrl) return;
+  if (databaseUrl && !databaseUrlIsPostgres) {
+    throw new Error('DATABASE_URL must use the PostgreSQL protocol');
+  }
+  if (hasAnyDatabaseSettings && !usePostgres) {
+    throw new Error('Incomplete PostgreSQL configuration; set DATABASE_URL or the full Cloud SQL variables');
+  }
+  if (process.env.NODE_ENV === 'production' && !usePostgres) {
+    throw new Error('Production requires a PostgreSQL database configuration');
+  }
 }
 
 async function ensureSchema() {
@@ -155,21 +181,25 @@ async function createOrGetConversation(userId, otherUserId) {
     return { id: conversation.id, created_at: iso(conversation.created_at) };
   }
 
-  const existing = await pool.query(
-    `SELECT c.id, c.created_at
-       FROM conversations c
-       JOIN conversation_participants cp ON cp.conversation_id = c.id
-      WHERE cp.user_id = ANY($1::uuid[])
-      GROUP BY c.id, c.created_at
-     HAVING COUNT(DISTINCT cp.user_id) = 2
-      LIMIT 1`,
-    [[userId, otherUserId]]
-  );
-  if (existing.rows[0]) return existing.rows[0];
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const pairKey = [userId, otherUserId].sort().join(':');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [pairKey]);
+    const existing = await client.query(
+      `SELECT c.id, c.created_at
+         FROM conversations c
+         JOIN conversation_participants cp ON cp.conversation_id = c.id
+        WHERE cp.user_id = ANY($1::uuid[])
+        GROUP BY c.id, c.created_at
+       HAVING COUNT(DISTINCT cp.user_id) = 2
+        LIMIT 1`,
+      [[userId, otherUserId]]
+    );
+    if (existing.rows[0]) {
+      await client.query('COMMIT');
+      return existing.rows[0];
+    }
     const conversation = await client.query('INSERT INTO conversations DEFAULT VALUES RETURNING id, created_at');
     const id = conversation.rows[0].id;
     await client.query(
@@ -392,5 +422,6 @@ module.exports = {
   markRead,
   mode,
   pendingMessages,
+  validateDatabaseConfig,
   userIsParticipant
 };

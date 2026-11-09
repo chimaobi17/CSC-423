@@ -1,5 +1,5 @@
 const { WebSocketServer, WebSocket } = require('ws');
-const { tokenFromRequest, verifyToken } = require('./auth');
+const { verifyToken } = require('./auth');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_MESSAGE_LENGTH = 1000;
@@ -8,6 +8,7 @@ function createWebSocketServer(httpServer, { db }) {
   const wss = new WebSocketServer({ noServer: true });
   const connections = new Map();
   const allowedOrigin = process.env.ALLOWED_ORIGIN;
+  const isProduction = process.env.NODE_ENV === 'production';
 
   function send(socket, event) {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event));
@@ -17,6 +18,13 @@ function createWebSocketServer(httpServer, { db }) {
     for (const [userId, socket] of connections) {
       if (userId !== exceptUserId) send(socket, event);
     }
+  }
+
+  function removeConnection(userId, socket) {
+    if (connections.get(userId) !== socket) return false;
+    connections.delete(userId);
+    broadcast({ type: 'user_offline', user_id: userId, last_seen: new Date().toISOString() }, userId);
+    return true;
   }
 
   function errorEvent(socket, message, refMessageId) {
@@ -135,7 +143,8 @@ function createWebSocketServer(httpServer, { db }) {
       return;
     }
     const origin = request.headers.origin;
-    if (allowedOrigin && origin && origin !== allowedOrigin) {
+    const originAllowed = allowedOrigin ? origin === allowedOrigin || (!isProduction && !origin) : !isProduction;
+    if (!originAllowed) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
@@ -204,12 +213,10 @@ function createWebSocketServer(httpServer, { db }) {
     });
     socket.on('error', (error) => {
       console.error(JSON.stringify({ severity: 'ERROR', event: 'ws_error', userId: user.userId, message: error.message }));
+      removeConnection(user.userId, socket);
     });
     socket.on('close', () => {
-      if (connections.get(user.userId) === socket) {
-        connections.delete(user.userId);
-        broadcast({ type: 'user_offline', user_id: user.userId, last_seen: new Date().toISOString() }, user.userId);
-      }
+      removeConnection(user.userId, socket);
       console.log(JSON.stringify({ severity: 'INFO', event: 'ws_close', userId: user.userId }));
     });
   });
@@ -217,7 +224,7 @@ function createWebSocketServer(httpServer, { db }) {
   const heartbeat = setInterval(() => {
     for (const [userId, socket] of connections) {
       if (socket.isAlive === false) {
-        connections.delete(userId);
+        removeConnection(userId, socket);
         socket.terminate();
         continue;
       }
