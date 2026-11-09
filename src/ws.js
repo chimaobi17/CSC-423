@@ -31,6 +31,12 @@ function createWebSocketServer(httpServer, { db }) {
     send(socket, { type: 'error', code: 'INVALID_PAYLOAD', message, ...(refMessageId ? { ref_message_id: refMessageId } : {}) });
   }
 
+  function originForRequest(request) {
+    const protocol = String(request.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    const host = request.headers.host;
+    return host ? `${protocol}://${host}` : '';
+  }
+
   async function handleEvent(socket, event) {
     if (!event || typeof event !== 'object' || typeof event.type !== 'string') {
       return errorEvent(socket, 'Message must be a JSON object with a type field');
@@ -143,7 +149,8 @@ function createWebSocketServer(httpServer, { db }) {
       return;
     }
     const origin = request.headers.origin;
-    const originAllowed = allowedOrigin ? origin === allowedOrigin || (!isProduction && !origin) : !isProduction;
+    const expectedOrigin = allowedOrigin || (isProduction ? originForRequest(request) : '');
+    const originAllowed = expectedOrigin ? origin === expectedOrigin || (!isProduction && !origin) : !isProduction;
     if (!originAllowed) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();

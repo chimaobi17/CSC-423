@@ -31,9 +31,6 @@ createWebSocketServer(httpServer, { db });
 async function start() {
   validateAuthConfig();
   db.validateDatabaseConfig();
-  if (process.env.NODE_ENV === 'production' && !/^https:\/\//i.test(process.env.ALLOWED_ORIGIN || '')) {
-    throw new Error('Production requires an HTTPS ALLOWED_ORIGIN');
-  }
   await db.ensureSchema();
   httpServer.listen(port, '0.0.0.0', () => {
     console.log(JSON.stringify({ severity: 'INFO', event: 'server_started', port, database: db.mode() }));

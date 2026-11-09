@@ -4,7 +4,7 @@ const path = require('node:path');
 const { Pool } = require('pg');
 
 const schemaPath = path.join(__dirname, '..', 'schema.sql');
-const databaseUrl = (process.env.DATABASE_URL || '').trim();
+const databaseUrl = (process.env.CHATBRIDGE_DATABASE_URL || process.env.DATABASE_URL || '').trim();
 const databaseUrlIsPostgres = /^postgres(?:ql)?:/i.test(databaseUrl);
 const knownManagedMysqlUrl = /^mysql:/i.test(databaseUrl) && process.env.NODE_ENV !== 'production';
 const hasCloudSqlSettings = Boolean(
