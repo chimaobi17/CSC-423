@@ -1,0 +1,18 @@
+flowchart LR
+  A[User Browser A\nHTML/CSS/JS] -->|WSS over TCP\nJSON messages| R[Google Cloud Run\nChatBridge Node.js service]
+  B[User Browser B\nHTML/CSS/JS] -->|WSS over TCP\nJSON messages| R
+  R -->|REST + WebSocket\nhealth /health| R
+  R -->|TLS PostgreSQL\nusers, conversations, messages| DB[(Cloud SQL for PostgreSQL)]
+  R -->|runtime secret injection| SM[Secret Manager\nJWT_SECRET + DB_PASSWORD]
+  CB[Cloud Build] -->|build image| AR[Artifact Registry]
+  AR -->|deploy immutable image| R
+  GH[GitHub main\nCSC-423] -->|source trigger / submit| CB
+
+  classDef client fill:#10251b,stroke:#b9f66d,color:#f5f7ee;
+  classDef service fill:#263c2d,stroke:#b9f66d,color:#f5f7ee;
+  classDef data fill:#1f2937,stroke:#8bd3ff,color:#f5f7ee;
+  classDef build fill:#25213a,stroke:#d4b5ff,color:#f5f7ee;
+  class A,B client;
+  class R service;
+  class DB,SM data;
+  class CB,AR,GH build;
