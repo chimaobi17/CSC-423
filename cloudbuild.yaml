@@ -1,0 +1,24 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "us-central1-docker.pkg.dev/$PROJECT_ID/chat-repo/chat-app:$SHORT_SHA", "."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "us-central1-docker.pkg.dev/$PROJECT_ID/chat-repo/chat-app:$SHORT_SHA"]
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - chat-app
+      - --image
+      - us-central1-docker.pkg.dev/$PROJECT_ID/chat-repo/chat-app:$SHORT_SHA
+      - --region
+      - us-central1
+      - --allow-unauthenticated
+      - --timeout
+      - "3600"
+      - --concurrency
+      - "80"
+      - --max-instances
+      - "1"
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/chat-repo/chat-app:$SHORT_SHA

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101311">
+  <meta name="description" content="ChatBridge — a small real-time WebSocket messaging demo.">
+  <title>ChatBridge</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#login" aria-label="ChatBridge home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+        <span>CHAT<span class="brand-slash">//</span>BRIDGE</span>
+      </a>
+      <div class="topbar-meta">
+        <span class="eyebrow">CSC-423 / REAL-TIME RELAY</span>
+        <span id="connection-pill" class="connection-pill offline"><span class="status-dot"></span><span id="connection-label">Offline</span></span>
+      </div>
+    </header>
+
+    <main id="app" class="page-frame">
+      <section id="view-login" class="view auth-view" hidden>
+        <div class="auth-copy">
+          <p class="eyebrow accent">A focused socket demo</p>
+          <h1>Messages that arrive<br><em>while you watch.</em></h1>
+          <p class="lede">A small, persistent one-to-one relay. Messages are saved before delivery, then carried over a live WebSocket connection.</p>
+          <div class="signal-note"><span class="signal-line"></span><span>WSS / POSTGRES / ONE CLEAR PATH</span></div>
+        </div>
+        <div class="panel auth-panel">
+          <div class="panel-kicker">RETURNING USER</div>
+          <h2>Open your relay</h2>
+          <form id="login-form" class="stack-form">
+            <label>Email<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+            <label>Password<input name="password" type="password" autocomplete="current-password" placeholder="8+ characters" required></label>
+            <button class="button primary" type="submit">Log in <span>→</span></button>
+          </form>
+          <p id="login-error" class="form-error" role="alert"></p>
+          <p class="form-switch">New here? <a href="#register">Create an account</a></p>
+        </div>
+      </section>
+
+      <section id="view-register" class="view auth-view" hidden>
+        <div class="auth-copy">
+          <p class="eyebrow accent">New channel identity</p>
+          <h1>Make a place<br><em>to be reached.</em></h1>
+          <p class="lede">Use a simple username and a password. No profile noise, no extra setup—just a dedicated socket when you sign in.</p>
+          <div class="signal-note"><span class="signal-line"></span><span>TEXT ONLY / PRIVATE / TEACHABLE</span></div>
+        </div>
+        <div class="panel auth-panel">
+          <div class="panel-kicker">FIRST-TIME USER</div>
+          <h2>Create identity</h2>
+          <form id="register-form" class="stack-form">
+            <label>Username<input name="username" autocomplete="username" placeholder="ada-lovelace" minlength="3" maxlength="50" required></label>
+            <label>Email<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+            <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" minlength="8" required></label>
+            <button class="button primary" type="submit">Register <span>→</span></button>
+          </form>
+          <p id="register-error" class="form-error" role="alert"></p>
+          <p class="form-switch">Already registered? <a href="#login">Log in</a></p>
+        </div>
+      </section>
+
+      <section id="view-dashboard" class="view workspace-view" hidden>
+        <aside class="side-rail">
+          <div>
+            <p class="eyebrow">YOUR RELAY</p>
+            <h1 id="dashboard-greeting">Dashboard</h1>
+            <p id="dashboard-email" class="muted"></p>
+          </div>
+          <div class="rail-footer">
+            <div class="mini-fact"><span class="status-dot live"></span><span>One socket / one server</span></div>
+            <button id="logout-button" class="text-button" type="button">Log out <span>↗</span></button>
+          </div>
+        </aside>
+        <div class="dashboard-content">
+          <div class="section-heading"><div><p class="eyebrow accent">DIRECTORY</p><h2>Who is reachable?</h2></div><button id="refresh-button" class="icon-button" type="button" title="Refresh">↻</button></div>
+          <p id="dashboard-error" class="form-error" role="alert"></p>
+          <div id="user-list" class="user-list"></div>
+          <div class="section-heading recent-heading"><div><p class="eyebrow accent">RECENT CHANNELS</p><h2>Pick up where you left off</h2></div></div>
+          <div id="conversation-list" class="conversation-list"></div>
+        </div>
+      </section>
+
+      <section id="view-conversation" class="view conversation-view" hidden>
+        <div class="conversation-header">
+          <button id="back-button" class="back-button" type="button">← <span>Dashboard</span></button>
+          <div class="conversation-title"><p class="eyebrow accent">PRIVATE CHANNEL</p><h1 id="conversation-name">Conversation</h1></div>
+          <div class="channel-id" id="channel-id">—</div>
+        </div>
+        <div id="message-list" class="message-list" aria-live="polite"></div>
+        <form id="message-form" class="composer">
+          <label class="sr-only" for="message-input">Message</label>
+          <textarea id="message-input" maxlength="1000" rows="1" placeholder="Write a message…" required></textarea>
+          <div class="composer-footer"><span>MAX 1,000 CHARACTERS</span><button class="button primary" type="submit">Send <span>↗</span></button></div>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer"><span>CHATBRIDGE / STUDENT RELAY</span><span>STATUS IS DATA</span></footer>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

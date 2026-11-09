@@ -1,0 +1,9 @@
+{
+  "routes": [
+    { "path": "/", "title": "ChatBridge" },
+    { "path": "/login", "title": "Log in | ChatBridge" },
+    { "path": "/register", "title": "Register | ChatBridge" },
+    { "path": "/dashboard", "title": "Dashboard | ChatBridge" },
+    { "path": "/conversation", "title": "Conversation | ChatBridge" }
+  ]
+}

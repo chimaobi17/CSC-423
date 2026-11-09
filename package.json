@@ -1,0 +1,25 @@
+{
+  "name": "chatbridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small one-to-one WebSocket chat application for CSC-423.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check src/auth.js && node --check src/db.js && node --check src/routes.js && node --check src/ws.js && node --check public/app.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
+  }
+}
