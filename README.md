@@ -1,6 +1,6 @@
 # ChatBridge
 
-ChatBridge is a deliberately small CSC-423 real-time messaging application. It demonstrates the core path from a browser to a central WebSocket server: users register and log in, open a persistent socket, send one-to-one text messages, and receive delivery/read status updates. The service stores durable data in PostgreSQL and serves the plain HTML/CSS/JavaScript client, REST API, and WebSocket endpoint from one Node.js process.
+ChatBridge is a deliberately small CSC-423 real-time messaging application, not an AI chatbot. It demonstrates the core path from a browser to a central WebSocket server: users register and log in, open a persistent socket, send one-to-one text messages, and receive delivery/read status updates. The service stores durable data in PostgreSQL and serves the plain HTML/CSS/JavaScript client, REST API, and WebSocket endpoint from one Node.js process. See [TRANSPORT_LAYER_REPORT.md](TRANSPORT_LAYER_REPORT.md) for the TCP/WebSocket and TCP-vs-UDP analysis.
 
 ## What is included
 
@@ -10,7 +10,7 @@ Redis, group chats, calls, file sharing, push notifications, end-to-end encrypti
 
 ## Run locally
 
-Requirements: Node.js 20+ and pnpm 11+.
+Requirements: Node.js 22.13+ and pnpm 11+.
 
 ```bash
 pnpm install
