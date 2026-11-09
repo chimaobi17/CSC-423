@@ -11,7 +11,7 @@
     "test": "node --test --test-concurrency=1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "packageManager": "pnpm@11.25.0",
   "dependencies": {
