@@ -30,6 +30,8 @@ chatbridge/
 │   ├── index.html            # Single shell for four compact views
 │   ├── app.js                # Hash routing, REST client, WebSocket client
 │   └── styles.css            # Responsive Signal Desk visual system
+├── test/
+│   └── chatbridge.test.js    # REST, WebSocket, auth, and offline replay tests
 ├── schema.sql                # PostgreSQL DDL matching the PRD
 ├── Dockerfile                # Cloud Run container contract
 ├── cloudbuild.yaml           # Build and deploy example
@@ -64,7 +66,7 @@ chatbridge/
 
 ## Build workflow
 
-1. Install the pinned Node dependencies and run the syntax checks.
+1. Install the pinned Node dependencies, run syntax checks, and execute the ephemeral-port Node test suite.
 2. Start the service on port 3000 for Preview; verify `/health` and `/manus-routes.json`.
 3. Run the app in memory mode for UI smoke checks, and use PostgreSQL mode in deployment or when `DATABASE_URL` is supplied.
 4. Prepare the Cloud Run declaration with the existing server capability and `/health` health path.

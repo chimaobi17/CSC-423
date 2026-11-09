@@ -16,10 +16,13 @@ Requirements: Node.js 20+ and pnpm 11+.
 pnpm install
 cp .env.example .env
 pnpm check
+pnpm test
 pnpm start
 ```
 
 Open `http://localhost:3000`. With no database variables, the application reports `memory-development` at `/health`, which is useful for a quick UI or WebSocket demonstration and is reset when the process stops. For durable local data, set `DATABASE_URL` to a PostgreSQL database before starting; the server applies `schema.sql` on startup. When `DATABASE_URL` or the Cloud SQL variable set is present, an unavailable database is treated as a startup failure instead of silently falling back.
+
+The automated suite starts the HTTP server on an ephemeral port and verifies health, account creation, duplicate protection, authorization, two-client online delivery, offline replay after reconnect, history persistence, and invalid WebSocket tokens. It uses the same memory adapter as a no-database Preview, so it does not modify a shared PostgreSQL environment.
 
 The main development endpoints are:
 
