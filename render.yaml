@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: chatbridge-web
+    env: node
+    plan: free
+    buildCommand: pnpm install && pnpm start
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: chatbridge-db
+          property: connectionString
+  - type: postgres
+    name: chatbridge-db
+    plan: free
+    region: oregon
+    postgresVersion: '15'
+    databases:
+      - name: chatbridge
+        owner: chatbridge_user
+        password: <SET_VIA_RENDER>
+

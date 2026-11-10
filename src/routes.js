@@ -19,12 +19,12 @@ function cleanText(value) {
 function createRouter({ db }) {
   const router = express.Router();
   const authLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many attempts. Please try again in a minute.' }
-  });
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  limit: 100, // allow more attempts per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again in a minute.' }
+});
 
   router.post('/register', authLimiter, async (request, response) => {
     const username = cleanText(request.body?.username);

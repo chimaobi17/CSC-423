@@ -16,9 +16,14 @@ const state = {
 const views = ['login', 'register', 'dashboard', 'conversation'];
 const $ = (selector) => document.querySelector(selector);
 const api = async (path, options = {}) => {
-  const response = await fetch(`/api${path}`, {
+  const url = `${window.location.origin}/api${path}`;
+  const response = await fetch(url, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}), ...(options.headers || {}) }
+    headers: {
+      'Content-Type': 'application/json',
+      ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+      ...(options.headers || {})
+    }
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'Request failed');
