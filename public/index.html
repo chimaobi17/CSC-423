@@ -63,39 +63,44 @@
         </div>
       </section>
 
-      <section id="view-dashboard" class="view workspace-view" hidden>
-        <aside class="side-rail">
-          <div>
-            <p class="eyebrow">YOUR RELAY</p>
-            <h1 id="dashboard-greeting">Dashboard</h1>
-            <p id="dashboard-email" class="muted"></p>
+      <section id="view-app" class="view chat-app" data-mode="list" hidden>
+        <aside class="chat-sidebar">
+          <header class="sidebar-head">
+            <div class="me">
+              <span id="me-avatar" class="avatar" aria-hidden="true"></span>
+              <div class="me-text"><strong id="me-name"></strong><small id="me-email"></small></div>
+            </div>
+            <button id="logout-button" class="text-button" type="button" title="Log out">Log out</button>
+          </header>
+          <div id="connection-banner" class="connection-banner" role="status" hidden></div>
+          <div class="sidebar-search">
+            <label class="sr-only" for="search-input">Search chats</label>
+            <input id="search-input" type="search" placeholder="Search or start a new chat" autocomplete="off">
           </div>
-          <div class="rail-footer">
-            <div class="mini-fact"><span class="status-dot live"></span><span>One socket / one server</span></div>
-            <button id="logout-button" class="text-button" type="button">Log out <span>↗</span></button>
-          </div>
-        </aside>
-        <div class="dashboard-content">
-          <div class="section-heading"><div><p class="eyebrow accent">DIRECTORY</p><h2>Who is reachable?</h2></div><button id="refresh-button" class="icon-button" type="button" title="Refresh">↻</button></div>
           <p id="dashboard-error" class="form-error" role="alert"></p>
-          <div id="user-list" class="user-list"></div>
-          <div class="section-heading recent-heading"><div><p class="eyebrow accent">RECENT CHANNELS</p><h2>Pick up where you left off</h2></div></div>
-          <div id="conversation-list" class="conversation-list"></div>
-        </div>
-      </section>
+          <div id="chat-list" class="chat-list"></div>
+        </aside>
 
-      <section id="view-conversation" class="view conversation-view" hidden>
-        <div class="conversation-header">
-          <button id="back-button" class="back-button" type="button">← <span>Dashboard</span></button>
-          <div class="conversation-title"><p class="eyebrow accent">PRIVATE CHANNEL</p><h1 id="conversation-name">Conversation</h1></div>
-          <div class="channel-id" id="channel-id">—</div>
-        </div>
-        <div id="message-list" class="message-list" aria-live="polite"></div>
-        <form id="message-form" class="composer">
-          <label class="sr-only" for="message-input">Message</label>
-          <textarea id="message-input" maxlength="1000" rows="1" placeholder="Write a message…" required></textarea>
-          <div class="composer-footer"><span>MAX 1,000 CHARACTERS</span><button class="button primary" type="submit">Send <span>↗</span></button></div>
-        </form>
+        <section class="chat-pane">
+          <div id="chat-empty" class="chat-empty">
+            <span class="brand-mark big" aria-hidden="true"><i></i><i></i></span>
+            <h2>ChatBridge</h2>
+            <p>Pick someone from the list to start chatting. Messages arrive instantly on every device you are signed in on.</p>
+          </div>
+          <div id="chat-active" class="chat-active" hidden>
+            <header class="chat-header">
+              <button id="back-button" class="back-button" type="button" aria-label="Back to chats">←</button>
+              <span id="chat-avatar" class="avatar" aria-hidden="true"></span>
+              <div class="chat-title"><h2 id="conversation-name">Conversation</h2><small id="chat-status"></small></div>
+            </header>
+            <div id="message-list" class="message-list" aria-live="polite"></div>
+            <form id="message-form" class="composer">
+              <label class="sr-only" for="message-input">Message</label>
+              <textarea id="message-input" maxlength="1000" rows="1" placeholder="Type a message" autocomplete="off"></textarea>
+              <button class="send-button" type="submit" aria-label="Send message">➤</button>
+            </form>
+          </div>
+        </section>
       </section>
     </main>
 

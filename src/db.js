@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -157,7 +159,8 @@ function normalizeUser(row) {
     id: row.id,
     username: row.username,
     email: row.email,
-    created_at: iso(row.created_at)
+    created_at: iso(row.created_at),
+    last_seen_at: iso(row.last_seen_at) || null
   };
 }
 
@@ -308,7 +311,7 @@ async function listUsers(excludeId) {
     try {
       await ensureSchema();
       const result = await pool.query(
-        'SELECT id, username, created_at FROM users WHERE id <> $1 ORDER BY username ASC LIMIT 500',
+        'SELECT id, username, created_at, last_seen_at FROM users WHERE id <> $1 ORDER BY username ASC LIMIT 500',
         [excludeId]
       );
       return result.rows.map(normalizeUser);
@@ -400,20 +403,33 @@ async function listConversations(userId) {
       await ensureSchema();
       const result = await pool.query(
         `SELECT c.id, c.created_at, peer.id AS peer_id, peer.username AS peer_username,
-                last_message.content AS last_message, last_message.created_at AS last_message_at
+                peer.last_seen_at AS peer_last_seen_at,
+                last_message.id AS last_message_id, last_message.content AS last_message,
+                last_message.created_at AS last_message_at,
+                last_message.sender_id AS last_message_sender_id,
+                last_message.delivery_status AS last_message_status,
+                (SELECT count(*)::int FROM messages um
+                  WHERE um.conversation_id = c.id AND um.recipient_id = $1
+                    AND um.delivery_status <> 'read') AS unread_count
            FROM conversations c
            JOIN conversation_participants mine ON mine.conversation_id = c.id AND mine.user_id = $1
            JOIN conversation_participants other ON other.conversation_id = c.id AND other.user_id <> $1
            JOIN users peer ON peer.id = other.user_id
            LEFT JOIN LATERAL (
-             SELECT content, created_at FROM messages WHERE conversation_id = c.id
-             ORDER BY created_at DESC LIMIT 1
+             SELECT id, content, created_at, sender_id, delivery_status FROM messages
+              WHERE conversation_id = c.id
+              ORDER BY created_at DESC LIMIT 1
            ) last_message ON true
           ORDER BY COALESCE(last_message.created_at, c.created_at) DESC
           LIMIT 200`,
         [userId]
       );
-      return result.rows.map((row) => ({ ...row, created_at: iso(row.created_at), last_message_at: iso(row.last_message_at) }));
+      return result.rows.map((row) => ({
+        ...row,
+        created_at: iso(row.created_at),
+        last_message_at: iso(row.last_message_at || row.created_at),
+        peer_last_seen_at: iso(row.peer_last_seen_at) || null
+      }));
     } catch (err) {
       handleDbError(err, 'listConversations');
     }
@@ -432,8 +448,13 @@ async function listConversations(userId) {
         created_at: iso(conversation.created_at),
         peer_id: peerId,
         peer_username: peer?.username || 'Unknown user',
-        last_message: messages[0]?.content || 'No messages yet',
-        last_message_at: iso(messages[0]?.created_at || conversation.created_at)
+        peer_last_seen_at: iso(peer?.last_seen_at) || null,
+        last_message_id: messages[0]?.id || null,
+        last_message: messages[0]?.content || null,
+        last_message_at: iso(messages[0]?.created_at || conversation.created_at),
+        last_message_sender_id: messages[0]?.sender_id || null,
+        last_message_status: messages[0]?.delivery_status || null,
+        unread_count: messages.filter((m) => m.recipient_id === userId && m.delivery_status !== 'read').length
       };
     })
     .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
@@ -605,6 +626,22 @@ async function markRead(conversationId, recipientId, messageIds = []) {
   return updated;
 }
 
+async function updateLastSeen(userId) {
+  if (pool && !pgDisabled) {
+    try {
+      await ensureSchema();
+      const result = await pool.query('UPDATE users SET last_seen_at = now() WHERE id = $1 RETURNING last_seen_at', [userId]);
+      if (result.rows[0]) return iso(result.rows[0].last_seen_at);
+    } catch (err) {
+      handleDbError(err, 'updateLastSeen');
+    }
+  }
+  const user = memory.users.get(userId);
+  if (!user) return null;
+  user.last_seen_at = new Date();
+  return iso(user.last_seen_at);
+}
+
 async function close() {
   if (pool) {
     try {
@@ -629,6 +666,7 @@ module.exports = {
   markRead,
   mode,
   pendingMessages,
+  updateLastSeen,
   validateDatabaseConfig,
   userIsParticipant
 };

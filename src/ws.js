@@ -4,9 +4,11 @@ const { allowedOrigins, explicitOrigins } = require('./origins');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_MESSAGE_LENGTH = 1000;
+const MAX_DEVICES_PER_USER = 5;
 
 function createWebSocketServer(httpServer, { db }) {
   const wss = new WebSocketServer({ noServer: true });
+  // userId -> Set<socket>. One user can be signed in on several devices at once.
   const connections = new Map();
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -14,16 +16,42 @@ function createWebSocketServer(httpServer, { db }) {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event));
   }
 
-  function broadcast(event, exceptUserId) {
-    for (const [userId, socket] of connections) {
-      if (userId !== exceptUserId) send(socket, event);
+  function sendToUser(userId, event, exceptSocket) {
+    for (const socket of connections.get(userId) || []) {
+      if (socket !== exceptSocket) send(socket, event);
     }
   }
 
+  function broadcast(event, exceptUserId) {
+    for (const userId of connections.keys()) {
+      if (userId !== exceptUserId) sendToUser(userId, event);
+    }
+  }
+
+  function addConnection(userId, socket) {
+    let sockets = connections.get(userId);
+    const firstDevice = !sockets;
+    if (!sockets) {
+      sockets = new Set();
+      connections.set(userId, sockets);
+    }
+    sockets.add(socket);
+    while (sockets.size > MAX_DEVICES_PER_USER) {
+      const oldest = sockets.values().next().value;
+      sockets.delete(oldest);
+      oldest.close(4000, 'Too many devices');
+    }
+    return firstDevice;
+  }
+
   function removeConnection(userId, socket) {
-    if (connections.get(userId) !== socket) return false;
+    const sockets = connections.get(userId);
+    if (!sockets || !sockets.delete(socket)) return false;
+    if (sockets.size > 0) return true;
     connections.delete(userId);
-    broadcast({ type: 'user_offline', user_id: userId, last_seen: new Date().toISOString() }, userId);
+    const lastSeen = new Date().toISOString();
+    broadcast({ type: 'user_offline', user_id: userId, last_seen: lastSeen }, userId);
+    db.updateLastSeen(userId).catch(() => {});
     return true;
   }
 
@@ -37,10 +65,25 @@ function createWebSocketServer(httpServer, { db }) {
     return host ? `${protocol}://${host}` : '';
   }
 
+  function chatPayload(message, extra = {}) {
+    return {
+      type: 'chat_message',
+      message_id: message.id,
+      conversation_id: message.conversation_id,
+      sender_id: message.sender_id,
+      recipient_id: message.recipient_id,
+      content: message.content,
+      timestamp: message.created_at,
+      status: message.delivery_status,
+      ...extra
+    };
+  }
+
   async function handleEvent(socket, event) {
     if (!event || typeof event !== 'object' || typeof event.type !== 'string') {
       return errorEvent(socket, 'Message must be a JSON object with a type field');
     }
+    const me = socket.user.userId;
 
     if (event.type === 'chat_message') {
       const messageId = typeof event.message_id === 'string' ? event.message_id : '';
@@ -53,18 +96,18 @@ function createWebSocketServer(httpServer, { db }) {
       if (!content || content.length > MAX_MESSAGE_LENGTH) {
         return errorEvent(socket, 'Message content must be 1–1,000 characters', messageId);
       }
-      if (recipientId === socket.user.userId || !(await db.findUserById(recipientId))) {
+      if (recipientId === me || !(await db.findUserById(recipientId))) {
         return errorEvent(socket, 'Recipient does not exist', messageId);
       }
-      if (!(await db.userIsParticipant(conversationId, socket.user.userId)) ||
+      if (!(await db.userIsParticipant(conversationId, me)) ||
           !(await db.userIsParticipant(conversationId, recipientId))) {
         return errorEvent(socket, 'You are not a participant in this conversation', messageId);
       }
 
-      const { message } = await db.insertMessage({
+      const { message, inserted } = await db.insertMessage({
         id: messageId,
         conversationId,
-        senderId: socket.user.userId,
+        senderId: me,
         recipientId,
         content
       });
@@ -76,27 +119,20 @@ function createWebSocketServer(httpServer, { db }) {
         created_at: message.created_at
       });
 
-      const recipientSocket = connections.get(recipientId);
-      if (recipientSocket) {
-        send(recipientSocket, {
-          type: 'chat_message',
-          message_id: message.id,
-          conversation_id: message.conversation_id,
-          sender_id: message.sender_id,
-          recipient_id: message.recipient_id,
-          content: message.content,
-          timestamp: message.created_at,
-          status: message.delivery_status
-        });
+      // A retry of an already-stored message is acknowledged but not forwarded twice.
+      if (inserted) {
+        sendToUser(recipientId, chatPayload(message));
+        // Keep the sender's other devices in sync with what they just sent.
+        sendToUser(me, chatPayload(message, { echo: true }), socket);
       }
       return;
     }
 
     if (event.type === 'message_delivered') {
       if (!UUID_PATTERN.test(event.message_id || '')) return errorEvent(socket, 'Invalid message ID');
-      const message = await db.markDelivered(event.message_id, socket.user.userId);
+      const message = await db.markDelivered(event.message_id, me);
       if (message) {
-        send(connections.get(message.sender_id), {
+        sendToUser(message.sender_id, {
           type: 'message_delivered',
           message_id: message.id,
           conversation_id: message.conversation_id,
@@ -112,20 +148,44 @@ function createWebSocketServer(httpServer, { db }) {
       if (!UUID_PATTERN.test(conversationId) || messageIds.some((id) => !UUID_PATTERN.test(id))) {
         return errorEvent(socket, 'Invalid conversation or message IDs');
       }
-      const updated = await db.markRead(conversationId, socket.user.userId, messageIds);
+      const updated = await db.markRead(conversationId, me, messageIds);
       const bySender = new Map();
       for (const message of updated) {
         if (!bySender.has(message.sender_id)) bySender.set(message.sender_id, []);
         bySender.get(message.sender_id).push(message.id);
       }
       for (const [senderId, ids] of bySender) {
-        send(connections.get(senderId), {
+        sendToUser(senderId, {
           type: 'message_read',
           conversation_id: conversationId,
           message_ids: ids,
           status: 'read'
         });
       }
+      // The reader's other devices should clear their unread badge too.
+      if (updated.length) {
+        sendToUser(me, {
+          type: 'conversation_read',
+          conversation_id: conversationId,
+          message_ids: updated.map((message) => message.id)
+        }, socket);
+      }
+      return;
+    }
+
+    if (event.type === 'typing') {
+      const conversationId = typeof event.conversation_id === 'string' ? event.conversation_id : '';
+      const recipientId = typeof event.recipient_id === 'string' ? event.recipient_id : '';
+      if (!UUID_PATTERN.test(conversationId) || !UUID_PATTERN.test(recipientId) || recipientId === me) return;
+      if (!connections.has(recipientId)) return;
+      if (!(await db.userIsParticipant(conversationId, me)) ||
+          !(await db.userIsParticipant(conversationId, recipientId))) return;
+      sendToUser(recipientId, {
+        type: 'typing',
+        conversation_id: conversationId,
+        user_id: me,
+        is_typing: Boolean(event.is_typing)
+      });
       return;
     }
 
@@ -179,27 +239,17 @@ function createWebSocketServer(httpServer, { db }) {
   wss.on('connection', (socket, _request, user) => {
     socket.user = user;
     socket.isAlive = true;
-    const previous = connections.get(user.userId);
-    if (previous && previous !== socket) previous.close(4000, 'Replaced by a newer connection');
-    connections.set(user.userId, socket);
+    const firstDevice = addConnection(user.userId, socket);
     console.log(JSON.stringify({ severity: 'INFO', event: 'ws_connect', userId: user.userId }));
     send(socket, { type: 'connection_established', user_id: user.userId, server_time: new Date().toISOString() });
-    broadcast({ type: 'user_online', user_id: user.userId }, user.userId);
+    send(socket, {
+      type: 'presence_snapshot',
+      online_user_ids: [...connections.keys()].filter((id) => id !== user.userId)
+    });
+    if (firstDevice) broadcast({ type: 'user_online', user_id: user.userId }, user.userId);
 
     db.pendingMessages(user.userId).then((messages) => {
-      for (const message of messages) {
-        send(socket, {
-          type: 'chat_message',
-          message_id: message.id,
-          conversation_id: message.conversation_id,
-          sender_id: message.sender_id,
-          recipient_id: message.recipient_id,
-          content: message.content,
-          timestamp: message.created_at,
-          status: message.delivery_status,
-          pending: true
-        });
-      }
+      for (const message of messages) send(socket, chatPayload(message, { pending: true }));
     }).catch((error) => {
       console.error(JSON.stringify({ severity: 'ERROR', event: 'pending_delivery_failed', userId: user.userId, code: error.code }));
     });
@@ -232,14 +282,16 @@ function createWebSocketServer(httpServer, { db }) {
   });
 
   const heartbeat = setInterval(() => {
-    for (const [userId, socket] of connections) {
-      if (socket.isAlive === false) {
-        removeConnection(userId, socket);
-        socket.terminate();
-        continue;
+    for (const [userId, sockets] of [...connections]) {
+      for (const socket of [...sockets]) {
+        if (socket.isAlive === false) {
+          removeConnection(userId, socket);
+          socket.terminate();
+          continue;
+        }
+        socket.isAlive = false;
+        socket.ping();
       }
-      socket.isAlive = false;
-      socket.ping();
     }
   }, 25_000);
   heartbeat.unref();

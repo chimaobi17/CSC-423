@@ -194,3 +194,125 @@ test('invalid WebSocket tokens are rejected with close code 4401', async () => {
   const closeCode = await waitForClose(socket);
   assert.equal(closeCode, 4401);
 });
+
+async function makeUser(prefix) {
+  const stamp = unique(prefix);
+  const password = 'S3curepass';
+  const account = { username: stamp, email: `${stamp}@example.com`, password };
+  const registered = await request('/api/register', { method: 'POST', body: JSON.stringify(account) });
+  const login = await request('/api/login', { method: 'POST', body: JSON.stringify({ email: account.email, password }) });
+  return { id: registered.body.id, username: account.username, token: login.body.token };
+}
+
+async function startChat(a, b) {
+  const conversation = await request('/api/conversations', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${a.token}` },
+    body: JSON.stringify({ other_user_id: b.id })
+  });
+  return conversation.body.conversation_id;
+}
+
+async function open(user) {
+  const socket = connect(user.token);
+  await waitForMessage(socket, (event) => event.type === 'connection_established');
+  return socket;
+}
+
+function sendChat(socket, conversationId, recipientId, content) {
+  const messageId = crypto.randomUUID();
+  socket.send(JSON.stringify({ type: 'chat_message', message_id: messageId, conversation_id: conversationId, recipient_id: recipientId, content }));
+  return messageId;
+}
+
+test('one user can be signed in on several devices and all of them stay in sync', async () => {
+  const [alice, bob] = await Promise.all([makeUser('alice'), makeUser('bob')]);
+  const conversationId = await startChat(alice, bob);
+
+  const alicePhone = await open(alice);
+  const aliceLaptop = await open(alice);
+  const bobPhone = await open(bob);
+
+  // Opening a second device must not kick the first one off.
+  assert.equal(alicePhone.readyState, WebSocket.OPEN);
+
+  // Both of Bob's devices receive the message; Alice's other device gets an echo.
+  const bobLaptop = await open(bob);
+  const toBobPhone = waitForMessage(bobPhone, (event) => event.type === 'chat_message');
+  const toBobLaptop = waitForMessage(bobLaptop, (event) => event.type === 'chat_message');
+  const echo = waitForMessage(aliceLaptop, (event) => event.type === 'chat_message' && event.echo === true);
+  const ack = waitForMessage(alicePhone, (event) => event.type === 'message_ack');
+  const messageId = sendChat(alicePhone, conversationId, bob.id, 'hi from my phone');
+  const [phoneEvent, laptopEvent, echoEvent] = await Promise.all([toBobPhone, toBobLaptop, echo, ack]);
+  assert.equal(phoneEvent.message_id, messageId);
+  assert.equal(laptopEvent.content, 'hi from my phone');
+  assert.equal(echoEvent.sender_id, alice.id);
+
+  // Unread count is reported to Bob; reading on one device clears it on the other.
+  const listed = await request('/api/conversations', { headers: { authorization: `Bearer ${bob.token}` } });
+  assert.equal(listed.body.conversations[0].unread_count, 1);
+  assert.equal(listed.body.conversations[0].last_message, 'hi from my phone');
+  assert.equal(listed.body.conversations[0].last_message_sender_id, alice.id);
+
+  const syncedRead = waitForMessage(bobLaptop, (event) => event.type === 'conversation_read');
+  const aliceSeesRead = waitForMessage(alicePhone, (event) => event.type === 'message_read');
+  const aliceLaptopSeesRead = waitForMessage(aliceLaptop, (event) => event.type === 'message_read');
+  bobPhone.send(JSON.stringify({ type: 'message_read', conversation_id: conversationId, message_ids: [messageId] }));
+  await Promise.all([syncedRead, aliceSeesRead, aliceLaptopSeesRead]);
+
+  const after = await request('/api/conversations', { headers: { authorization: `Bearer ${bob.token}` } });
+  assert.equal(after.body.conversations[0].unread_count, 0);
+
+  await Promise.all([alicePhone, aliceLaptop, bobPhone, bobLaptop].map(closeAndWait));
+});
+
+test('presence snapshot, typing indicator, and last seen', async () => {
+  const [carol, dave] = await Promise.all([makeUser('carol'), makeUser('dave')]);
+  const conversationId = await startChat(carol, dave);
+
+  const carolSocket = await open(carol);
+  const daveSocket = connect(dave.token);
+  const snapshotPromise = waitForMessage(daveSocket, (event) => event.type === 'presence_snapshot');
+  const snapshot = await snapshotPromise;
+  assert.ok(snapshot.online_user_ids.includes(carol.id));
+
+  const typing = waitForMessage(daveSocket, (event) => event.type === 'typing');
+  carolSocket.send(JSON.stringify({ type: 'typing', conversation_id: conversationId, recipient_id: dave.id, is_typing: true }));
+  const typingEvent = await typing;
+  assert.equal(typingEvent.user_id, carol.id);
+  assert.equal(typingEvent.is_typing, true);
+
+  const offline = waitForMessage(daveSocket, (event) => event.type === 'user_offline' && event.user_id === carol.id);
+  await closeAndWait(carolSocket);
+  const offlineEvent = await offline;
+  assert.ok(offlineEvent.last_seen);
+
+  const users = await request('/api/users', { headers: { authorization: `Bearer ${dave.token}` } });
+  const carolRow = users.body.users.find((user) => user.id === carol.id);
+  assert.ok(carolRow.last_seen_at, 'last_seen_at is stored when the last device disconnects');
+
+  await closeAndWait(daveSocket);
+});
+
+test('a retried message is acknowledged but delivered only once', async () => {
+  const [erin, frank] = await Promise.all([makeUser('erin'), makeUser('frank')]);
+  const conversationId = await startChat(erin, frank);
+  const erinSocket = await open(erin);
+  const frankSocket = await open(frank);
+
+  const received = [];
+  frankSocket.on('message', (raw) => {
+    const event = JSON.parse(raw.toString());
+    if (event.type === 'chat_message') received.push(event);
+  });
+  const messageId = crypto.randomUUID();
+  const payload = { type: 'chat_message', message_id: messageId, conversation_id: conversationId, recipient_id: frank.id, content: 'only once' };
+  erinSocket.send(JSON.stringify(payload));
+  await waitForMessage(erinSocket, (event) => event.type === 'message_ack');
+  erinSocket.send(JSON.stringify(payload));
+  await waitForMessage(erinSocket, (event) => event.type === 'message_ack');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(received.length, 1);
+
+  await Promise.all([closeAndWait(erinSocket), closeAndWait(frankSocket)]);
+});
