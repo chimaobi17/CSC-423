@@ -1,5 +1,6 @@
 const { WebSocketServer, WebSocket } = require('ws');
 const { verifyToken } = require('./auth');
+const { allowedOrigins, explicitOrigins } = require('./origins');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_MESSAGE_LENGTH = 1000;
@@ -7,7 +8,6 @@ const MAX_MESSAGE_LENGTH = 1000;
 function createWebSocketServer(httpServer, { db }) {
   const wss = new WebSocketServer({ noServer: true });
   const connections = new Map();
-  const allowedOrigin = process.env.ALLOWED_ORIGIN;
   const isProduction = process.env.NODE_ENV === 'production';
 
   function send(socket, event) {
@@ -149,8 +149,11 @@ function createWebSocketServer(httpServer, { db }) {
       return;
     }
     const origin = request.headers.origin;
-    const expectedOrigin = allowedOrigin || (isProduction ? originForRequest(request) : '');
-    const originAllowed = expectedOrigin ? origin === expectedOrigin || (!isProduction && !origin) : !isProduction;
+    const explicit = explicitOrigins();
+    const permitted = [...allowedOrigins(), ...(isProduction ? [originForRequest(request)] : [])];
+    const originAllowed = !isProduction && explicit.length === 0
+      ? true
+      : permitted.includes(origin) || (!isProduction && !origin);
     if (!originAllowed) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();

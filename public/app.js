@@ -15,8 +15,10 @@ const state = {
 
 const views = ['login', 'register', 'dashboard', 'conversation'];
 const $ = (selector) => document.querySelector(selector);
+// Backend origin: set in config.js when the frontend is hosted separately (Vercel).
+const API_ORIGIN = String(window.CHATBRIDGE_API_ORIGIN || window.location.origin).replace(/\/+$/, '');
 const api = async (path, options = {}) => {
-  const url = `${window.location.origin}/api${path}`;
+  const url = `${API_ORIGIN}/api${path}`;
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -297,8 +299,7 @@ function connectSocket() {
   if (!state.token || state.intentionalClose || state.socket?.readyState === WebSocket.OPEN) return;
   clearTimeout(state.reconnectTimer);
   setConnectionStatus('Connecting');
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const socket = new WebSocket(`${protocol}://${window.location.host}/ws?token=${encodeURIComponent(state.token)}`);
+  const socket = new WebSocket(`${API_ORIGIN.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(state.token)}`);
   state.socket = socket;
   socket.addEventListener('open', () => setConnectionStatus('Connecting'));
   socket.addEventListener('message', (message) => {
