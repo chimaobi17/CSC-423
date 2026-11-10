@@ -50,8 +50,9 @@ function createRouter({ db }) {
       return response.status(201).json({ id: user.id, username: user.username });
     } catch (error) {
       if (error.code === '23505') return response.status(409).json({ error: 'Username or email already exists' });
-      console.error(JSON.stringify({ severity: 'ERROR', event: 'register_failed', code: error.code, message: error.message }));
-      return response.status(500).json({ error: error.message || 'Unable to create account' });
+      console.error('Register failed:', { code: error.code, message: error.message });
+      const msg = error.message ? error.message : (error.code ? 'Database error' : 'Unable to create account');
+      return response.status(500).json({ error: msg });
     }
   });
 

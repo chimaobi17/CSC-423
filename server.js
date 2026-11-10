@@ -45,4 +45,8 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, httpServer, start };
+module.exports = app;
+module.exports.app = app;
+module.exports.httpServer = httpServer;
+module.exports.start = start;
+module.exports.default = app;
