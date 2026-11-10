@@ -11,6 +11,7 @@ const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT || 3000);
 
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(publicDir, { extensions: ['html'] }));
 app.get('/health', async (_request, response) => {

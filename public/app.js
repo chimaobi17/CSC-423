@@ -375,8 +375,9 @@ $('#login-form').addEventListener('submit', (event) => {
 
 $('#register-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  submitForm(event.currentTarget, '/register', async () => {
-    event.currentTarget.reset();
+  const form = event.currentTarget;
+  submitForm(form, '/register', async () => {
+    form.reset();
     window.location.hash = 'login';
     $('#login-error').textContent = 'Account created. Log in to open your relay.';
   }, $('#register-error'));

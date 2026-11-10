@@ -4,15 +4,20 @@ const path = require('node:path');
 const { Pool } = require('pg');
 
 const schemaPath = path.join(__dirname, '..', 'schema.sql');
-const rawDatabaseUrl = (
-  process.env.CHATBRIDGE_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  process.env.POSTGRES_PRISMA_URL ||
-  process.env.POSTGRES_URL_NON_POOLING ||
-  ''
-).trim();
-const databaseUrl = rawDatabaseUrl;
+function cleanUrl(value) {
+  let v = String(value || '').trim();
+  v = v.replace(/^[A-Z_]+=/, '');
+  v = v.replace(/^["']+|["']+$/g, '').trim();
+  return v;
+}
+const candidateUrls = [
+  process.env.CHATBRIDGE_DATABASE_URL,
+  process.env.DATABASE_URL,
+  process.env.POSTGRES_URL,
+  process.env.POSTGRES_PRISMA_URL,
+  process.env.POSTGRES_URL_NON_POOLING
+].map(cleanUrl).filter(Boolean);
+const databaseUrl = candidateUrls.find((u) => /^postgres(?:ql)?:/i.test(u)) || candidateUrls[0] || '';
 const databaseUrlIsPostgres = /^postgres(?:ql)?:/i.test(databaseUrl);
 const knownManagedMysqlUrl = /^mysql:/i.test(databaseUrl) && process.env.NODE_ENV !== 'production';
 const hasCloudSqlSettings = Boolean(
@@ -180,10 +185,14 @@ function mode() {
 function validateDatabaseConfig() {
   if (knownManagedMysqlUrl) return;
   if (databaseUrl && !databaseUrlIsPostgres) {
-    throw new Error('DATABASE_URL must use the PostgreSQL protocol');
+    lastDbError = 'DATABASE_URL must use the PostgreSQL protocol (postgres://...); running in memory mode';
+    console.warn(JSON.stringify({ severity: 'WARNING', event: 'invalid_database_url', message: lastDbError }));
+    return;
   }
   if (hasAnyDatabaseSettings && !usePostgres) {
-    throw new Error('Incomplete PostgreSQL configuration; set DATABASE_URL or the full Cloud SQL variables');
+    lastDbError = 'Incomplete PostgreSQL configuration; running in memory mode';
+    console.warn(JSON.stringify({ severity: 'WARNING', event: 'incomplete_database_config', message: lastDbError }));
+    return;
   }
   if (process.env.NODE_ENV === 'production' && !usePostgres) {
     console.warn(JSON.stringify({ severity: 'WARNING', event: 'production_without_postgres', message: 'Running in production without PostgreSQL; in-memory storage active' }));

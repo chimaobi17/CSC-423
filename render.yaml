@@ -1,22 +1,28 @@
 services:
   - type: web
     name: chatbridge-web
-    env: node
-    plan: free
-    buildCommand: pnpm install && pnpm start
-    startCommand: node server.js
-    envVars:
-      - key: DATABASE_URL
-        fromService:
-          name: chatbridge-db
-          property: connectionString
-  - type: postgres
-    name: chatbridge-db
+    runtime: node
     plan: free
     region: oregon
-    postgresVersion: '15'
-    databases:
-      - name: chatbridge
-        owner: chatbridge_user
-        password: <SET_VIA_RENDER>
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chatbridge-db
+          property: connectionString
 
+databases:
+  - name: chatbridge-db
+    plan: free
+    region: oregon
+    databaseName: chatbridge
+    user: chatbridge_user
+    postgresMajorVersion: '15'
