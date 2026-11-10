@@ -50,8 +50,8 @@ function createRouter({ db }) {
       return response.status(201).json({ id: user.id, username: user.username });
     } catch (error) {
       if (error.code === '23505') return response.status(409).json({ error: 'Username or email already exists' });
-      console.error(JSON.stringify({ severity: 'ERROR', event: 'register_failed', code: error.code }));
-      return response.status(500).json({ error: 'Unable to create account' });
+      console.error(JSON.stringify({ severity: 'ERROR', event: 'register_failed', code: error.code, message: error.message }));
+      return response.status(500).json({ error: error.message || 'Unable to create account' });
     }
   });
 
@@ -66,8 +66,8 @@ function createRouter({ db }) {
       console.log(JSON.stringify({ severity: 'INFO', event: 'login_success', userId: user.id }));
       return response.json({ token: signToken(safeUser), user: safeUser });
     } catch (error) {
-      console.error(JSON.stringify({ severity: 'ERROR', event: 'login_failed', code: error.code }));
-      return response.status(500).json({ error: 'Unable to log in' });
+      console.error(JSON.stringify({ severity: 'ERROR', event: 'login_failed', code: error.code, message: error.message }));
+      return response.status(500).json({ error: error.message || 'Unable to log in' });
     }
   });
 

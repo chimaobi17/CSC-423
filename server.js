@@ -15,9 +15,10 @@ app.use(express.json({ limit: '20kb' }));
 app.use(express.static(publicDir, { extensions: ['html'] }));
 app.get('/health', async (_request, response) => {
   try {
-    return response.json({ ok: true, service: 'chatbridge', database: (await db.health()).mode });
-  } catch {
-    return response.status(503).json({ ok: false, service: 'chatbridge' });
+    const health = await db.health();
+    return response.json({ ok: true, service: 'chatbridge', database: health.mode, details: health.error || undefined });
+  } catch (err) {
+    return response.status(503).json({ ok: false, service: 'chatbridge', error: err.message });
   }
 });
 app.use('/api', createRouter({ db }));

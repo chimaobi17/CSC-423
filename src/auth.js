@@ -3,10 +3,15 @@ const jwt = require('jsonwebtoken');
 
 const JWT_TTL = '2h';
 const DEVELOPMENT_SECRET = 'chatbridge-development-secret-change-me';
+const PRODUCTION_FALLBACK_SECRET = 'chatbridge-production-fallback-secret-min32chars';
 
 function jwtSecret() {
-  const secret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : DEVELOPMENT_SECRET);
+  const secret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? PRODUCTION_FALLBACK_SECRET : DEVELOPMENT_SECRET);
   if (secret.length < 32) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(JSON.stringify({ severity: 'WARNING', event: 'insecure_jwt_secret', message: 'JWT_SECRET under 32 characters; using fallback' }));
+      return PRODUCTION_FALLBACK_SECRET;
+    }
     throw new Error('JWT_SECRET must be at least 32 characters');
   }
   return secret;
